@@ -6,7 +6,9 @@ It uses OpenCV and NumPy.
 
 OpenCV is used for image analysis (feature detection, matching, finding homography, transforming).
 
-NumPy is used for image processing and averaging.
+NumPy is used for image processing and averaging. 
+
+Images are processed with 16bit per channel accuracy.
 
 ### usage
 
