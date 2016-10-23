@@ -10,6 +10,9 @@ NumPy is used for image processing and averaging.
 
 Images are processed with 16bit per channel accuracy.
 
+Samples included.
+
+
 ### usage
 
 1. place images in *input* directory
