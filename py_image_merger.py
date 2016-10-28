@@ -7,6 +7,8 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 
+ADD_IMAGES_FAILED_TO_ALIGN = True
+
 
 def transform_image_to_base_image(img1, base):
 
@@ -60,9 +62,19 @@ if __name__ == '__main__':
 
     for i in range(len(images) - 1):
         print(str(i + 1) + "/" + str(len(images) - 1))
-
-        img1 = cv2.imread(mypath + images[i + 1])
-        stabilized_average += np.float32(transform_image_to_base_image(img1, base))/len(images)
+        
+        imgpath = mypath + images[i + 1]
+        
+        img1 = cv2.imread(imgpath)
+        
+        try:
+            stabilized_average += np.float32(transform_image_to_base_image(img1, base))/len(images)
+            
+        except Exception as e:
+            print("not processed: {}".format(imgpath))
+            
+            if ADD_IMAGES_FAILED_TO_ALIGN:
+                stabilized_average += np.float32(img1)/len(images)
         
     outname = outpath+images[0]+'-'+images[-1]+'.png'
     
