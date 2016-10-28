@@ -18,3 +18,9 @@ Samples included.
 1. place images in *input* directory
 1. run application
 1. check *output* directory
+
+### sample result
+
+Divided view, upper-left - original, bottom-right - averaged, center boosted 8x. Images were taken with smartphone camera.
+
+![result](https://raw.githubusercontent.com/michal2229/image-align-and-average/master/results/IMG_20160402_210944_40-images_boost-8x_comparision_small.jpg)
