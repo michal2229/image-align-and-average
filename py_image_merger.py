@@ -80,7 +80,7 @@ if __name__ == '__main__':
     
     print("Saving file " + outname)
 
-    cv2.imwrite(outname, np.uint16(stabilized_average)*256)
+    cv2.imwrite(outname, np.uint16(stabilized_average*256))
     
     
     
