@@ -16,7 +16,8 @@ def transform_image_to_base_image(img1, base):
 
 
     # Initiate ORB detector
-    orb = cv2.ORB()
+    # orb = cv2.ORB()      # OpenCV2
+    orb = cv2.ORB_create() # OpenCV3
 
     # find the keypoints and descriptors with orb
     kp1, des1 = orb.detectAndCompute(img1,None)
@@ -71,7 +72,7 @@ if __name__ == '__main__':
             stabilized_average += np.float32(transform_image_to_base_image(img1, base))/len(images)
             
         except Exception as e:
-            print("not processed: {}".format(imgpath))
+            print("not processed: {} \nbecause: {}".format(imgpath, e))
             
             if ADD_IMAGES_FAILED_TO_ALIGN:
                 stabilized_average += np.float32(img1)/len(images)
