@@ -11,7 +11,6 @@ import numpy as np
 # pip3 install matplotlib
 # sudo apt install python3-tk
 
-ADD_IMAGES_FAILED_TO_ALIGN = False
 ADAPT_BRIGHTNESS = True
 DEBUG = True
 
