@@ -45,8 +45,6 @@ def transform_image_to_base_image(img1, base):
     # finding homography
     M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
     matchesMask = mask.ravel().tolist()
-    # M[0][2] = 0 # if you want to find disparity or sth...
-    print("    > found homography: \n{}\n".format(M))
 
     h,w,b = img1.shape
 
@@ -104,16 +102,11 @@ if __name__ == '__main__':
         
         img1 = cv2.imread(imgpath)
         
-        try:
-            transformed_image = transform_image_to_base_image(img1, base)
-            stabilized_average += np.float32(transformed_image)
-            
-            if DEBUG:
-                cv2.imwrite(outpath + images[i + 1] + '_DEBUG.jpg', transformed_image)
-            
-        except Exception as e:
-            print("not processed: {} \nbecause: {}".format(imgpath, e))
-            divider -= 1
+        transformed_image = transform_image_to_base_image(img1, base)
+        stabilized_average += np.float32(transformed_image)
+        
+        if DEBUG:
+            cv2.imwrite(outpath + images[i + 1] + '_DEBUG.jpg', transformed_image)
     
     print("divider = {}".format(divider))
     stabilized_average /= divider # dividing sum by number of images
