@@ -5,17 +5,39 @@ import os
 import re
 from matplotlib import pyplot as plt
 import numpy as np
+import atexit
+
+
 
 ## DEPENDENCIES
 # opencv3, numpy
 # pip3 install matplotlib
 # sudo apt install python3-tk
 
-DEBUG = False
+DEBUG = 1
 MIN_MATCH_COUNT = 10
 
 IN_DIR  = "./input/"
 OUT_DIR = "./output/"
+
+def get_next_framve_from_video():
+    cap = cv2.VideoCapture(0)
+
+    mypath  = IN_DIR
+    outpath = OUT_DIR
+
+    videos_paths = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f)) and f[0] is not "."]
+    videos_paths.sort()
+
+    counter = 0
+    for vidpath in videos_paths:
+        cap = cv2.VideoCapture(mypath + vidpath)
+        while(True):
+            # Capture frame-by-frame
+            ret, frame = cap.read()
+
+            yield frame, "frame{}".format(counter)
+            counter += 1
 
 def get_next_frame_from_file():
     mypath  = IN_DIR
@@ -62,23 +84,39 @@ def compute_homography(img1, base):
 
 def transform_image_to_base_image(img1, base):
     H, mask = compute_homography(img1, base)
+    mask = np.ones_like(img1)
 
     h,w,b = img1.shape
 
     dst = cv2.warpPerspective(img1, H, (w, h))
+    mask = cv2.warpPerspective(mask, H, (w, h))
 
-    return dst
+    return dst, mask
 
 
 def make_mask_from_image(img):
     map1 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ret, map1 = cv2.threshold(map1, 0, 1, cv2.THRESH_BINARY)
+    ret, map1 = cv2.threshold(map1, 0.000001, 1, cv2.THRESH_BINARY)
     map1 = cv2.cvtColor(map1, cv2.COLOR_GRAY2BGR)
 
     return map1
 
+
+def exit_handler():
+    print('My application is ending!')
+    global stabilized_average, divider_mask, imagenames, outname, stabilized_average
+
+    stabilized_average /= divider_mask # dividing sum by number of images
+ 
+    outname = OUT_DIR+imagenames[0]+'-'+imagenames[-1]+'.png'
+
+    print("Saving file " + outname)
+
+    cv2.imwrite(outname, np.uint16(stabilized_average*256))
+
 # main
 if __name__ == '__main__':
+    atexit.register(exit_handler)
 
     base = None
     stabilized_average = None
@@ -87,7 +125,7 @@ if __name__ == '__main__':
 
     counter = 0
     imagenames = []
-    for img1, imgname in get_next_frame_from_file():
+    for img1, imgname in get_next_framve_from_video():
         imagenames.append(imgname)
 
         print("IMAGE NR {}".format(counter))
@@ -99,24 +137,24 @@ if __name__ == '__main__':
             stabilized_average = np.float32(img1.copy())
             divider_mask = np.ones_like(stabilized_average)
 
-            if DEBUG:
+            if DEBUG == 2:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', stabilized_average)
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
 
         else:
-            transformed_image = transform_image_to_base_image(img1, base)
+            transformed_image, mask = transform_image_to_base_image(img1, base)
             stabilized_average += np.float32(transformed_image)
-            divider_mask += make_mask_from_image(transformed_image)
+            divider_mask += mask
 
-            if DEBUG:
+            if DEBUG == 1:
+                cv2.imshow( "stabilized_average/divider_mask", stabilized_average/256/divider_mask );
+                cv2.imshow( "divider_mask", divider_mask/(counter+1) );
+                cv2.waitKey(1);
+
+            if DEBUG == 2:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
         counter += 1
-
-    stabilized_average /= divider_mask # dividing sum by number of images
         
-    outname = OUT_DIR+imagenames[0]+'-'+imagenames[-1]+'.png'
-    
-    print("Saving file " + outname)
+    exit_handler()
 
-    cv2.imwrite(outname, np.uint16(stabilized_average*256))
