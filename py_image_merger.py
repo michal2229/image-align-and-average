@@ -11,14 +11,11 @@ import numpy as np
 # pip3 install matplotlib
 # sudo apt install python3-tk
 
-ADAPT_BRIGHTNESS = True
-DEBUG = True
+DEBUG = False
+MIN_MATCH_COUNT = 10
 
 
-def transform_image_to_base_image(img1, base):
-
-    MIN_MATCH_COUNT = 10
-
+def compute_homography(img1, base):
     # Initiate ORB detector
     orb = cv2.ORB_create()
 
@@ -43,33 +40,17 @@ def transform_image_to_base_image(img1, base):
     dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
     # finding homography
-    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-    matchesMask = mask.ravel().tolist()
+    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+
+    return H, mask
+
+
+def transform_image_to_base_image(img1, base):
+    H, mask = compute_homography(img1, base)
 
     h,w,b = img1.shape
 
-    # warping perspective
-    dst = cv2.warpPerspective(img1, M, (w, h))
-    
-    if ADAPT_BRIGHTNESS:
-        im1_brightness = 0.0
-        im2_brightness = 0.0
-        
-        for match in good:
-            img1_idx = match.queryIdx
-            img2_idx = match.trainIdx
-
-            im1_x, im1_y = np.int32(kp1[img1_idx].pt)
-            im2_x, im2_y = np.int32(kp2[img2_idx].pt)
-            
-            im1_brightness += img1[im1_y][im1_x]
-            im2_brightness += base[im2_y][im2_x]
-        
-        img1_to_base_brightness_ratio = im1_brightness/im2_brightness
-        
-        print("    > brightness ratio is {}".format(cv2.mean(img1_to_base_brightness_ratio)[0]))
-        
-        dst = dst/cv2.mean(img1_to_base_brightness_ratio)[0]
+    dst = cv2.warpPerspective(img1, H, (w, h))
 
     return dst
 
@@ -112,11 +93,6 @@ if __name__ == '__main__':
     stabilized_average /= divider # dividing sum by number of images
         
     outname = outpath+images[0]+'-'+images[-1]+'.png'
-    
-    if ADAPT_BRIGHTNESS:
-        max_brightness = np.max(stabilized_average)
-        if max_brightness > 255:
-            stabilized_average *= 255/max_brightness # making sure every value is below 255
     
     print("Saving file " + outname)
 
