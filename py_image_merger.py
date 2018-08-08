@@ -20,6 +20,20 @@ MIN_MATCH_COUNT = 10
 IN_DIR  = "./input/"
 OUT_DIR = "./output/"
 
+
+def get_frame_from_main_camera():
+    cap = cv2.VideoCapture(0)
+
+    counter = 0
+
+    while(True):
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+
+        yield frame, "frame{}".format(counter)
+        counter += 1
+
+
 def get_next_framve_from_video():
     cap = cv2.VideoCapture(0)
 
@@ -51,6 +65,14 @@ def get_next_frame_from_file():
         yield cv2.imread( mypath + imgpath), imgpath
         counter += 1
 
+def get_next_frame_from_chosen_source(src = 1):
+    if src == 0:
+        return get_frame_from_main_camera()
+    if src == 1:
+        return get_next_framve_from_video()
+    if src == 2:
+        return get_next_frame_from_file()
+
 
 def compute_homography(img1, base):
     # Initiate ORB detector
@@ -69,15 +91,19 @@ def compute_homography(img1, base):
     print("    > found {} matches".format(len(matches)))
 
     # filtering matches
-    good = matches[0:int(len(matches)/2)]
+    good = matches[0:int(len(matches))]
     print("    > after filtration {} matches left\n".format(len(good)))
 
     # getting source & destination points
     src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
     dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
+    if DEBUG >= 1:
+        matchesimg = cv2.drawMatches(img1,kp1,base,kp2,matches, flags=4,outImg=None)
+        cv2.imshow( "matchesimg", matchesimg );
+        cv2.waitKey(1);
     # finding homography
-    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
 
     return H, mask
 
@@ -125,7 +151,7 @@ if __name__ == '__main__':
 
     counter = 0
     imagenames = []
-    for img1, imgname in get_next_framve_from_video():
+    for img1, imgname in get_next_frame_from_chosen_source():
         imagenames.append(imgname)
 
         print("IMAGE NR {}".format(counter))
@@ -137,7 +163,7 @@ if __name__ == '__main__':
             stabilized_average = np.float32(img1.copy())
             divider_mask = np.ones_like(stabilized_average)
 
-            if DEBUG == 2:
+            if DEBUG >= 2:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', stabilized_average)
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
 
@@ -146,12 +172,12 @@ if __name__ == '__main__':
             stabilized_average += np.float32(transformed_image)
             divider_mask += mask
 
-            if DEBUG == 1:
+            if DEBUG >= 1:
                 cv2.imshow( "stabilized_average/divider_mask", stabilized_average/256/divider_mask );
                 cv2.imshow( "divider_mask", divider_mask/(counter+1) );
                 cv2.waitKey(1);
 
-            if DEBUG == 2:
+            if DEBUG >= 2:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
         counter += 1
