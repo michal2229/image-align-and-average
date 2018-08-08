@@ -14,6 +14,21 @@ import numpy as np
 DEBUG = False
 MIN_MATCH_COUNT = 10
 
+IN_DIR  = "./input/"
+OUT_DIR = "./output/"
+
+def get_next_frame_from_file():
+    mypath  = IN_DIR
+    outpath = OUT_DIR
+
+    images_paths = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f)) and f[0] is not "."]
+    images_paths.sort()
+
+    counter = 0
+    for imgpath in images_paths:
+        yield cv2.imread( mypath + imgpath), imgpath
+        counter += 1
+
 
 def compute_homography(img1, base):
     # Initiate ORB detector
@@ -55,44 +70,52 @@ def transform_image_to_base_image(img1, base):
     return dst
 
 
+def make_mask_from_image(img):
+    map1 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, map1 = cv2.threshold(map1, 0, 1, cv2.THRESH_BINARY)
+    map1 = cv2.cvtColor(map1, cv2.COLOR_GRAY2BGR)
+
+    return map1
+
 # main
 if __name__ == '__main__':
 
-    mypath = "./input/"
-    outpath = "./output/"
-    images = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f)) and f[0] is not "."]
-    images.sort()
-    
-    print("\n".join(images))
-    
-    firstimgpath = mypath + images[0]
-    print("Base image is {}".format(firstimgpath))
-    
-    base = cv2.imread(firstimgpath)
-    stabilized_average = np.float32(base.copy())
-    
-    divider = len(images)
-    
-    if DEBUG:
-        cv2.imwrite(outpath + images[0] + '_DEBUG.jpg', base)
+    base = None
+    stabilized_average = None
+    divider_mask = None
+    base
 
-    for i in range(len(images) - 1):
-        print(str(i + 1) + "/" + str(len(images) - 1))
+    counter = 0
+    imagenames = []
+    for img1, imgname in get_next_frame_from_file():
+        imagenames.append(imgname)
+
+        print("IMAGE NR {}".format(counter))
         
-        imgpath = mypath + images[i + 1]
+        imgpath = IN_DIR + imgname
         
-        img1 = cv2.imread(imgpath)
+        if counter == 0:
+            base = img1
+            stabilized_average = np.float32(img1.copy())
+            divider_mask = np.ones_like(stabilized_average)
+
+            if DEBUG:
+                cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', stabilized_average)
+                cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
+
+        else:
+            transformed_image = transform_image_to_base_image(img1, base)
+            stabilized_average += np.float32(transformed_image)
+            divider_mask += make_mask_from_image(transformed_image)
+
+            if DEBUG:
+                cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
+                cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
+        counter += 1
+
+    stabilized_average /= divider_mask # dividing sum by number of images
         
-        transformed_image = transform_image_to_base_image(img1, base)
-        stabilized_average += np.float32(transformed_image)
-        
-        if DEBUG:
-            cv2.imwrite(outpath + images[i + 1] + '_DEBUG.jpg', transformed_image)
-    
-    print("divider = {}".format(divider))
-    stabilized_average /= divider # dividing sum by number of images
-        
-    outname = outpath+images[0]+'-'+images[-1]+'.png'
+    outname = OUT_DIR+imagenames[0]+'-'+imagenames[-1]+'.png'
     
     print("Saving file " + outname)
 
