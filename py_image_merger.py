@@ -6,16 +6,17 @@ import re
 from matplotlib import pyplot as plt
 import numpy as np
 import atexit
-
+import rawpy
+import imageio
 
 
 ## DEPENDENCIES
 # python3
 # opencv3, numpy
-# pip3 install matplotlib
+# pip3 install matplotlib rawpy imageio
 # sudo apt install python3-tk
 
-INPUT_MODE = 2 # 0 - webcam, 1 - video, 2 - image sequence
+INPUT_MODE = 2 # 0 - webcam, 1 - video, 2 - image sequence, 3 - raw files sequence
 ALIGN = True # if False, just average
 DEBUG = 1
 RESIZE=1.0 # 0.5 gives half of every dim, and so on...
@@ -82,6 +83,20 @@ def get_next_frame_from_file():
         yield cv2.imread( mypath + imgpath), imgpath
         counter += 1
 
+def get_next_frame_from_raws():
+    mypath  = IN_DIR
+    outpath = OUT_DIR
+
+    images_paths = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f)) and f[0] is not "."]
+    images_paths.sort()
+
+    counter = 0
+    for imgpath in images_paths:
+        with rawpy.imread(mypath + imgpath) as raw:
+            rgb = raw.postprocess(gamma=(1,1), no_auto_bright=True, output_bps=16)
+            yield rgb
+        counter += 1
+
 def get_next_frame_from_chosen_source(src = 1):
     if src == 0:
         return get_frame_from_main_camera()
@@ -89,6 +104,8 @@ def get_next_frame_from_chosen_source(src = 1):
         return get_next_frame_from_video()
     if src == 2:
         return get_next_frame_from_file()
+    if src == 3:
+        return get_next_frame_from_raws()
 
 
 def compute_homography(img1, base):
