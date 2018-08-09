@@ -18,7 +18,7 @@ import atexit
 INPUT_MODE = 2 # 0 - webcam, 1 - video, 2 - image sequence
 ALIGN = True # if False, just average
 DEBUG = 1
-RESIZE=1.0 # 0.5 gives half of every dim, and so on...
+RESIZE = 1 #.0 0.5 gives half of every dim, and so on...
 
 IN_DIR  = "./input/"
 DARK_IN_DIR  = "./input_darkframe/"
@@ -102,9 +102,6 @@ def compute_homography(img1, base):
 
     print("    > found {} kp1".format(len(kp1)))
     print("    > found {} kp2".format(len(kp2)))
-
-    # kp1 = sorted(kp1, key=lambda x: -x.response) #[0:int(len(kp1)/2)]
-    # kp2 = sorted(kp2, key=lambda x: -x.response) #[0:int(len(kp2)/2)]
 
     kp1, des1 = alg.compute(img1, kp1)
     kp2, des2 = alg.compute(base, kp2)
@@ -240,7 +237,9 @@ if __name__ == '__main__':
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
 
         else:
-            transformed_image = img1.copy()
+            shape = stabilized_average.shape
+            img1 = cv2.resize(img1, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+            transformed_image = img1
             H = None
             
             if darkframe_image is not None:
