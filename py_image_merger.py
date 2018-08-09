@@ -10,17 +10,33 @@ import atexit
 
 
 ## DEPENDENCIES
+# python3
 # opencv3, numpy
 # pip3 install matplotlib
 # sudo apt install python3-tk
 
-ALIGN = True
+INPUT_MODE = 2 # 0 - webcam, 1 - video, 2 - image sequence
+ALIGN = True # if False, just average
 DEBUG = 1
-MIN_MATCH_COUNT = 10
+RESIZE=1.0 # 0.5 gives half of every dim, and so on...
 
 IN_DIR  = "./input/"
+DARK_IN_DIR  = "./input_darkframe/"
+DARKFRAME_COEFF = 1.0
 OUT_DIR = "./output/"
 
+## Returns 0.0 ... 65535.0 darkframe loaded from 16bpp image
+def get_darkframe():
+    mypath  = DARK_IN_DIR
+
+    images_paths = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f)) and f[0] is not "."]
+    
+    if len(images_paths) == 0:
+        return None
+    
+    darkframe = cv2.imread( mypath + images_paths[0])
+    
+    return np.float32(darkframe)*DARKFRAME_COEFF
 
 def get_frame_from_main_camera():
     cap = cv2.VideoCapture(0)
@@ -35,7 +51,7 @@ def get_frame_from_main_camera():
         counter += 1
 
 
-def get_next_framve_from_video():
+def get_next_frame_from_video():
     cap = cv2.VideoCapture(0)
 
     mypath  = IN_DIR
@@ -70,7 +86,7 @@ def get_next_frame_from_chosen_source(src = 1):
     if src == 0:
         return get_frame_from_main_camera()
     if src == 1:
-        return get_next_framve_from_video()
+        return get_next_frame_from_video()
     if src == 2:
         return get_next_frame_from_file()
 
@@ -83,27 +99,57 @@ def compute_homography(img1, base):
     # find the keypoints and descriptors with orb
     kp1 = alg.detect(img1,None)
     kp2 = alg.detect(base,None)
-    
+
     print("    > found {} kp1".format(len(kp1)))
     print("    > found {} kp2".format(len(kp2)))
-    
+
     # kp1 = sorted(kp1, key=lambda x: -x.response) #[0:int(len(kp1)/2)]
     # kp2 = sorted(kp2, key=lambda x: -x.response) #[0:int(len(kp2)/2)]
-    
+
     kp1, des1 = alg.compute(img1, kp1)
     kp2, des2 = alg.compute(base, kp2)
-    
 
     # initialize matcher
     bfm = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
     # matching
     matches = bfm.match(des1, des2)
-    matches = sorted(matches, key = lambda x:x.distance)
     print("    > found {} matches".format(len(matches)))
-
+    
     # filtering matches
-    good = matches[0:int(len(matches)/2)]
+    avg_dist = 0
+    for match in matches:
+        img1_idx = match.queryIdx
+        img2_idx = match.trainIdx
+        
+        im1_x, im1_y = np.int32(kp1[img1_idx].pt)
+        im2_x, im2_y = np.int32(kp2[img2_idx].pt)
+        
+        a = np.array((im1_x ,im1_y))
+        b = np.array((im2_x, im2_y))
+        
+        avg_dist += np.linalg.norm(a - b)
+    avg_dist /= len(matches)
+    
+    dist_diffs = []
+    for match in matches:
+        img1_idx = match.queryIdx
+        img2_idx = match.trainIdx
+        
+        im1_x, im1_y = np.int32(kp1[img1_idx].pt)
+        im2_x, im2_y = np.int32(kp2[img2_idx].pt)
+        
+        a = np.array((im1_x ,im1_y))
+        b = np.array((im2_x, im2_y))
+        
+        dist = np.linalg.norm(a - b)
+        dist_diff = np.linalg.norm(avg_dist - dist)
+        dist_diffs.append(dist_diff)
+        
+    sorted_y_idx_list = sorted(range(len(dist_diffs)), key=lambda x:dist_diffs[x])
+    good = [matches[i] for i in sorted_y_idx_list ][0:int(len(matches)/2)]
+    good = sorted(good, key = lambda x:x.distance)
+    good = good[0:int(len(good)/2)]
     print("    > after filtration {} matches left\n".format(len(good)))
 
     # getting source & destination points
@@ -111,7 +157,7 @@ def compute_homography(img1, base):
     dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
     if DEBUG >= 2:
-        matchesimg = cv2.drawMatches(img1,kp1,base,kp2,matches, flags=4,outImg=None)
+        matchesimg = cv2.drawMatches(img1, kp1, base, kp2, good, flags=4, outImg=None)
         cv2.imshow( "matchesimg", matchesimg );
         cv2.waitKey(1);
     # finding homography
@@ -120,8 +166,7 @@ def compute_homography(img1, base):
     return H, mask
 
 
-def transform_image_to_base_image(img1, base):
-    H, mask = compute_homography(img1, base)
+def transform_image_to_base_image(img1, H):
     mask = np.ones_like(img1)
 
     h,w,b = img1.shape
@@ -140,14 +185,17 @@ def make_mask_from_image(img):
     return map1
 
 def exit_handler():
-    global stabilized_average, divider_mask, imagenames, outname, stabilized_average
+    global stabilized_average, divider_mask, imagenames, outname, stabilized_average, darkframe_average
 
     stabilized_average /= divider_mask # dividing sum by number of images
  
     outname = OUT_DIR+imagenames[0]+'-'+imagenames[-1]+'.png'
 
     print("Saving file " + outname)
-
+    
+    stabilized_average[stabilized_average < 0] = 0
+    stabilized_average[stabilized_average > 255] = 255
+    
     cv2.imwrite(outname, np.uint16(stabilized_average*256))
 
 
@@ -155,32 +203,37 @@ def exit_handler():
 if __name__ == '__main__':
     atexit.register(exit_handler)
 
-    base = None
     stabilized_average = None
+    darkframe_image = get_darkframe()
+    mask_image = None
     divider_mask = None
 
     counter = 0
     imagenames = []
-    for img1_, imgname in get_next_frame_from_chosen_source(1):
+    for img1_, imgname in get_next_frame_from_chosen_source(INPUT_MODE):
         img1 = None
-        
+
         try:
             img1 = img1_
-            # img1 = cv2.resize(img1, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR) 
+            img1 = cv2.resize(img1, (0, 0), fx=RESIZE, fy=RESIZE, interpolation=cv2.INTER_LINEAR)
             print("IMAGE NR {} of size {}".format(counter, img1.shape))
         except Exception as e:
             print("Nope")
             continue
 
         imagenames.append(imgname)
-
         
         imgpath = IN_DIR + imgname
         
         if counter == 0:
-            base = img1
-            stabilized_average = np.float32(img1.copy())
-            divider_mask = np.ones_like(stabilized_average)
+            stabilized_average = np.float32(img1)
+            if darkframe_image is not None:
+                darkshape = img1.shape
+                darkframe_image = cv2.resize(darkframe_image, (darkshape[1], darkshape[0]), interpolation=cv2.INTER_LINEAR)
+                stabilized_average = stabilized_average - darkframe_image
+                
+            mask_image = np.ones_like(img1, dtype=np.float32)
+            divider_mask = mask_image.copy()
 
             if DEBUG >= 3:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', stabilized_average)
@@ -188,16 +241,24 @@ if __name__ == '__main__':
 
         else:
             transformed_image = img1.copy()
-            mask = None
+            H = None
+            
+            if darkframe_image is not None:
+                transformed_image = transformed_image - darkframe_image
+                
             if ALIGN:
-                transformed_image, mask = transform_image_to_base_image(transformed_image, base)
-            else:
-                mask = np.ones_like(transformed_image)
+                base = (stabilized_average/divider_mask)  
+                base[base <= 0] = 0
+                base[base >= 255] = 255
+                H, _ = compute_homography(img1, np.array(base, dtype=img1.dtype)  )
+                transformed_image, mask_image = transform_image_to_base_image(transformed_image, H)
+                
             stabilized_average += np.float32(transformed_image)
-            divider_mask += mask
+            divider_mask += mask_image
 
             if DEBUG >= 1:
-                cv2.imshow( "stabilized_average/divider_mask", stabilized_average/256/divider_mask );
+                cv2.imshow( "stabilized_average/256/divider_mask", stabilized_average/256/divider_mask );
+                cv2.imshow( "transformed_image/255", transformed_image/255 );
                 cv2.imshow( "divider_mask", divider_mask/(counter+1) );
                 cv2.waitKey(1);
 
