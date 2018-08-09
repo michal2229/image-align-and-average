@@ -14,6 +14,7 @@ import atexit
 # pip3 install matplotlib
 # sudo apt install python3-tk
 
+ALIGN = True
 DEBUG = 1
 MIN_MATCH_COUNT = 10
 
@@ -76,11 +77,22 @@ def get_next_frame_from_chosen_source(src = 1):
 
 def compute_homography(img1, base):
     # Initiate ORB detector
-    orb = cv2.ORB_create()
+    # alg = cv2.ORB_create()
+    alg = cv2.AKAZE_create()
 
     # find the keypoints and descriptors with orb
-    kp1, des1 = orb.detectAndCompute(img1,None)
-    kp2, des2 = orb.detectAndCompute(base,None)
+    kp1 = alg.detect(img1,None)
+    kp2 = alg.detect(base,None)
+    
+    print("    > found {} kp1".format(len(kp1)))
+    print("    > found {} kp2".format(len(kp2)))
+    
+    # kp1 = sorted(kp1, key=lambda x: -x.response) #[0:int(len(kp1)/2)]
+    # kp2 = sorted(kp2, key=lambda x: -x.response) #[0:int(len(kp2)/2)]
+    
+    kp1, des1 = alg.compute(img1, kp1)
+    kp2, des2 = alg.compute(base, kp2)
+    
 
     # initialize matcher
     bfm = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -91,14 +103,14 @@ def compute_homography(img1, base):
     print("    > found {} matches".format(len(matches)))
 
     # filtering matches
-    good = matches[0:int(len(matches))]
+    good = matches[0:int(len(matches)/2)]
     print("    > after filtration {} matches left\n".format(len(good)))
 
     # getting source & destination points
     src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
     dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
-    if DEBUG >= 1:
+    if DEBUG >= 2:
         matchesimg = cv2.drawMatches(img1,kp1,base,kp2,matches, flags=4,outImg=None)
         cv2.imshow( "matchesimg", matchesimg );
         cv2.waitKey(1);
@@ -127,9 +139,7 @@ def make_mask_from_image(img):
 
     return map1
 
-
 def exit_handler():
-    print('My application is ending!')
     global stabilized_average, divider_mask, imagenames, outname, stabilized_average
 
     stabilized_average /= divider_mask # dividing sum by number of images
@@ -140,6 +150,7 @@ def exit_handler():
 
     cv2.imwrite(outname, np.uint16(stabilized_average*256))
 
+
 # main
 if __name__ == '__main__':
     atexit.register(exit_handler)
@@ -147,14 +158,22 @@ if __name__ == '__main__':
     base = None
     stabilized_average = None
     divider_mask = None
-    base
 
     counter = 0
     imagenames = []
-    for img1, imgname in get_next_frame_from_chosen_source():
+    for img1_, imgname in get_next_frame_from_chosen_source(1):
+        img1 = None
+        
+        try:
+            img1 = img1_
+            # img1 = cv2.resize(img1, (0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_LINEAR) 
+            print("IMAGE NR {} of size {}".format(counter, img1.shape))
+        except Exception as e:
+            print("Nope")
+            continue
+
         imagenames.append(imgname)
 
-        print("IMAGE NR {}".format(counter))
         
         imgpath = IN_DIR + imgname
         
@@ -163,12 +182,17 @@ if __name__ == '__main__':
             stabilized_average = np.float32(img1.copy())
             divider_mask = np.ones_like(stabilized_average)
 
-            if DEBUG >= 2:
+            if DEBUG >= 3:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', stabilized_average)
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
 
         else:
-            transformed_image, mask = transform_image_to_base_image(img1, base)
+            transformed_image = img1.copy()
+            mask = None
+            if ALIGN:
+                transformed_image, mask = transform_image_to_base_image(transformed_image, base)
+            else:
+                mask = np.ones_like(transformed_image)
             stabilized_average += np.float32(transformed_image)
             divider_mask += mask
 
@@ -177,10 +201,10 @@ if __name__ == '__main__':
                 cv2.imshow( "divider_mask", divider_mask/(counter+1) );
                 cv2.waitKey(1);
 
-            if DEBUG >= 2:
+            if DEBUG >= 3:
                 cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
                 cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
         counter += 1
         
-    exit_handler()
+    #exit_handler()
 
