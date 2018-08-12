@@ -17,7 +17,7 @@ import atexit
 
 INPUT_MODE = 1 # 0 - webcam, 1 - video, 2 - image sequence
 ALIGN = True # if False, just average
-PREDICTION = False
+PREDICTION = True
 DEBUG = 1
 RESIZE = 0.25 #.0 0.5 gives half of every dim, and so on...
 BORDER = 0.5
@@ -94,7 +94,6 @@ def get_next_frame_from_chosen_source(_src = 1):
 
 
 def compute_homography(_input_image, _base, pxdistcoeff = 0.9, dscdistcoeff = 0.9, _cache = None):
-
     k_cnt  = "counter"
     k_kp2  = "kp2"
     k_des2 = "des2"
@@ -103,8 +102,6 @@ def compute_homography(_input_image, _base, pxdistcoeff = 0.9, dscdistcoeff = 0.
             _cache[k_cnt] += 1
         else:
             _cache[k_cnt] = 0
-
-
 
     # Initiate ORB detector
     # alg = cv2.ORB_create()
@@ -245,10 +242,6 @@ if __name__ == '__main__':
     H_state_v_old = None
     H_state_a_old = None
     
-    H_state_x_current = None
-    H_state_v_current = None
-    H_state_a_current = None
-    
     H_pred = None
     
     keypoint_cache = dict()
@@ -275,7 +268,6 @@ if __name__ == '__main__':
         
         if darkframe_image is None:
             darkframe_image_no_border = get_darkframe()
-            # darkframe_image
 
         if stabilized_average is None:
             stabilized_average = np.float32(input_image)
@@ -284,16 +276,13 @@ if __name__ == '__main__':
                 darkframe_image = cv2.resize(darkframe_image, (darkshape[1], darkshape[0]), interpolation=cv2.INTER_LINEAR)
                 stabilized_average = stabilized_average - darkframe_image
             
-        #mask_image_no_border = None
         if mask_image is None:
             mask_image_no_border = make_mask_for_image(input_image_no_border)
             mask_image = make_border_for_image(mask_image_no_border, BORDER)
-        #divider_mask_no_border = None
+
         if divider_mask is None:
             divider_mask = make_mask_for_image(mask_image_no_border, BORDER)
             divider_mask[:] = 1
-
-
 
 
         imagenames.append(imgname)
@@ -319,16 +308,16 @@ if __name__ == '__main__':
             transformed_image = transform_image_to_base_image(transformed_image, H)
             transformed_mask  = transform_image_to_base_image(mask_image, H)
             
-            if PREDICTION and (INPUT_MODE == 2):
+            if PREDICTION and (INPUT_MODE == 1 or INPUT_MODE == 0):
                 H_state_x_current = H
+                H_state_v_current = None
+                H_state_a_current = None
                 
-                if len(H_state_x_old) > 1:
+                if H_state_x_old is not None:
                     H_state_v_current = H_state_x_current - H_state_x_old
                 
-                if len(H_state_v_old) > 1:
+                if H_state_v_old is not None:
                     H_state_a_current = H_state_v_current - H_state_v_old
-                
-                if len(H_state_a_current) > 1:
                     H_pred = H_state_x_current + H_state_v_current + H_state_a_current/2
                 
                 H_state_x_old = H_state_x_current
