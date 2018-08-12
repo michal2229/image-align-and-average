@@ -1,14 +1,14 @@
 ## image-align-and-average
 
-Python application for image noise removal by aligning and averaging many images.
+Python3 application for image noise removal by aligning and averaging many images.
 
-It uses OpenCV and NumPy.
+It uses OpenCV3 and NumPy.
 
 OpenCV is used for image analysis (feature detection, matching, finding homography, transforming).
 
 NumPy is used for image processing and averaging. 
 
-Images are processed with 16bit per channel accuracy.
+Images are processed with float32 accuracy and saved as 16bpc PNGs.
 
 Samples included.
 
