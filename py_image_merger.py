@@ -93,20 +93,44 @@ def get_next_frame_from_chosen_source(_src = 1):
         return get_next_frame_from_file()
 
 
-def compute_homography(_input_image, _base):
+def compute_homography(_input_image, _base, pxdistcoeff = 0.9, dscdistcoeff = 0.9, _cache = None):
+
+    k_cnt  = "counter"
+    k_kp2  = "kp2"
+    k_des2 = "des2"
+    if _cache is not None:
+        if k_cnt in _cache:
+            _cache[k_cnt] += 1
+        else:
+            _cache[k_cnt] = 0
+
+
+
     # Initiate ORB detector
     # alg = cv2.ORB_create()
     alg = cv2.AKAZE_create()
 
     # find the keypoints and descriptors with orb
     kp1 = alg.detect(_input_image,None)
-    kp2 = alg.detect(_base,None)
+    kp1, des1 = alg.compute(_input_image, kp1)
+    
+    kp2, des2 = None, None
+    if _cache is not None:
+        if _cache[k_cnt] < 10 or _cache[k_cnt] % 10 == 0:
+            kp2 = alg.detect(_base,None)
+            kp2, des2 = alg.compute(_base, kp2)
+            _cache[k_kp2] = kp2
+            _cache[k_des2] = des2
+            print("    > found and cached {} kp2".format(len(kp2)))    
+        else:
+            kp2, des2 = _cache[k_kp2], _cache[k_des2]
+            print("    > reused {} kp2".format(len(kp2)))
+    else:
+        kp2 = alg.detect(_base,None)
+        kp2, des2 = alg.compute(_base, kp2)
+        print("    > found {} kp2".format(len(kp2)))
 
     print("    > found {} kp1".format(len(kp1)))
-    print("    > found {} kp2".format(len(kp2)))
-
-    kp1, des1 = alg.compute(_input_image, kp1)
-    kp2, des2 = alg.compute(_base, kp2)
 
     # initialize matcher
     bfm = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -146,10 +170,10 @@ def compute_homography(_input_image, _base):
         dist_diffs.append(dist_diff)
         
     sorted_y_idx_list = sorted(range(len(dist_diffs)), key=lambda x:dist_diffs[x])
-    good = [matches[i] for i in sorted_y_idx_list ][0:int(len(matches)*0.9)]
+    good = [matches[i] for i in sorted_y_idx_list ][0:int(len(matches)*pxdistcoeff)]
     
     good = sorted(good, key = lambda x:x.distance)
-    good = good[0:int(len(good)*0.9)]
+    good = good[0:int(len(good)*dscdistcoeff)]
     
     print("    > after filtration {} matches left\n".format(len(good)))
 
@@ -227,6 +251,7 @@ if __name__ == '__main__':
     
     H_pred = None
     
+    keypoint_cache = dict()
 
     counter = 0
     imagenames = []
@@ -286,7 +311,7 @@ if __name__ == '__main__':
             base = (stabilized_average/divider_mask)  
             base[base <= 0] = 0
             base[base >= 255] = 255
-            H = compute_homography(input_image, np.array(base, dtype=input_image.dtype)  )
+            H = compute_homography(input_image, np.array(base, dtype=input_image.dtype), _cache = keypoint_cache )
             
             if H_pred is not None:
                 H = (H + H_pred)/2
