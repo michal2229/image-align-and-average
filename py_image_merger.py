@@ -19,13 +19,15 @@ INPUT_MODE = 1 # 0 - webcam, 1 - video, 2 - image sequence
 ALIGN = True # if False, just average
 PREDICTION = True
 DEBUG = 1
-RESIZE = 0.25 #.0 0.5 gives half of every dim, and so on...
-BORDER = 0.5
+RESIZE = 1.0 #.0 0.5 gives half of every dim, and so on...
+BORDER = 0.1
 
 IN_DIR  = "./input/"
 DARK_IN_DIR  = "./input_darkframe/"
 DARKFRAME_COEFF = 1.0
 OUT_DIR = "./output/"
+
+stabilized_average, divider_mask, imagenames, outname = None, None, None, None
 
 ## Returns 0.0 ... 65535.0 darkframe loaded from 16bpp image
 def get_darkframe():
@@ -38,7 +40,9 @@ def get_darkframe():
     
     darkframe = cv2.imread( mypath + images_paths[0])
     
-    return np.float32(darkframe)*DARKFRAME_COEFF
+    print("get_darkframe(): loaded darkframe.")
+    
+    return np.float32(darkframe)/255*DARKFRAME_COEFF
 
 def get_frame_from_main_camera():
     cap = cv2.VideoCapture(0)
@@ -49,7 +53,7 @@ def get_frame_from_main_camera():
         # Capture frame-by-frame
         ret, frame = cap.read()
 
-        yield frame, "webcam_{}".format(counter)
+        yield np.float32(frame)/255, "webcam_{}".format(counter)
         counter += 1
 
 
@@ -69,7 +73,7 @@ def get_next_frame_from_video():
             # Capture frame-by-frame
             ret, frame = cap.read()
 
-            yield frame, "{}_{}".format(vidpath, counter)
+            yield np.float32(frame)/255, "{}_{}".format(vidpath, counter)
             counter += 1
 
 def get_next_frame_from_file():
@@ -81,7 +85,7 @@ def get_next_frame_from_file():
 
     counter = 0
     for imgpath in images_paths:
-        yield cv2.imread( mypath + imgpath), imgpath
+        yield np.float32(cv2.imread( mypath + imgpath)), imgpath
         counter += 1
 
 def get_next_frame_from_chosen_source(_src = 1):
@@ -206,7 +210,7 @@ def make_border_for_image(_img, _border_coeff = 0):
     return map1
 
 def exit_handler():
-    global stabilized_average, divider_mask, imagenames, outname, stabilized_average, darkframe_average
+    global stabilized_average, divider_mask, imagenames, outname
 
     stabilized_average /= divider_mask # dividing sum by number of images
  
@@ -215,22 +219,24 @@ def exit_handler():
     print("Saving file " + outname)
     
     stabilized_average[stabilized_average < 0] = 0
-    stabilized_average[stabilized_average > 255] = 255
+    stabilized_average[stabilized_average > 1] = 1
     
-    cv2.imwrite(outname, np.uint16(stabilized_average*256))
+    cv2.imwrite(outname, np.uint16(stabilized_average*65535))
 
     cv2.waitKey();
 
-# main
-if __name__ == '__main__':
+def main():
+    global stabilized_average, divider_mask, imagenames, outname
+    
     atexit.register(exit_handler)
     
+    shape_original = None
     shape_no_border = None
     shape = None
 
     stabilized_average = None
     darkframe_image_no_border = None # get_darkframe()
-    darkframe_image = None
+    #darkframe_image = None
     mask_image_no_border = None
     mask_image = None
     divider_mask_no_border = None
@@ -252,29 +258,33 @@ if __name__ == '__main__':
         input_image_no_border = None
         input_image = None
 
-        #try:
-        input_image_no_border = input_image_
+        try:
+            shape_original = input_image_.shape
+        except Exception as e:
+            print("Nope")
+            if counter > 0:
+                return
+            continue
+        
+        if darkframe_image_no_border is None:
+            darkframe_image_no_border = get_darkframe()
+            darkframe_image_no_border = cv2.resize(darkframe_image_no_border, (shape_original[1], shape_original[0]), interpolation=cv2.INTER_LINEAR)
+
+        if darkframe_image_no_border is not None:
+            input_image_no_border = input_image_ - darkframe_image_no_border
+            
         if shape is None:
             input_image_no_border = cv2.resize(input_image_no_border, (0, 0), fx=RESIZE, fy=RESIZE, interpolation=cv2.INTER_LINEAR)
         else:
             input_image_no_border = cv2.resize(input_image_no_border, (shape_no_border[1], shape_no_border[0]), interpolation=cv2.INTER_LINEAR)
-        shape_no_border = input_image_no_border.shape
-        print("IMAGE NR {} of size {}".format(counter, input_image_no_border.shape))
+
         input_image = make_border_for_image(input_image_no_border, BORDER)
-        shape = input_image.shape
-        #except Exception as e:
-        #    print("Nope")
-         #   continue
         
-        if darkframe_image is None:
-            darkframe_image_no_border = get_darkframe()
+        shape_no_border = input_image_no_border.shape
+        shape = input_image.shape
 
         if stabilized_average is None:
             stabilized_average = np.float32(input_image)
-            if darkframe_image is not None:
-                darkshape = input_image.shape
-                darkframe_image = cv2.resize(darkframe_image, (darkshape[1], darkshape[0]), interpolation=cv2.INTER_LINEAR)
-                stabilized_average = stabilized_average - darkframe_image
             
         if mask_image is None:
             mask_image_no_border = make_mask_for_image(input_image_no_border)
@@ -284,25 +294,27 @@ if __name__ == '__main__':
             divider_mask = make_mask_for_image(mask_image_no_border, BORDER)
             divider_mask[:] = 1
 
-
         imagenames.append(imgname)
         imgpath = IN_DIR + imgname
         
-
         input_image = cv2.resize(input_image, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
         transformed_image = input_image
         H = None
         
-        if darkframe_image is not None:
-            transformed_image = transformed_image - darkframe_image
 
         if ALIGN:
             base = (stabilized_average/divider_mask)  
             base[base <= 0] = 0
-            base[base >= 255] = 255
-            H = compute_homography(input_image, np.array(base, dtype=input_image.dtype), _cache = keypoint_cache )
+            base[base >= 1] = 1
+            H = compute_homography(input_image, np.array(base, dtype=input_image.dtype), pxdistcoeff = 0.9, dscdistcoeff = 0.9, _cache = keypoint_cache )
             
             if H_pred is not None:
+                transformed_image_nopred = transform_image_to_base_image(transformed_image, H)
+                transformed_image_pred   = transform_image_to_base_image(transformed_image, H_pred)
+                cv2.imshow( "transformed_image_nopred", transformed_image_nopred );
+                cv2.imshow( "transformed_image_pred",   transformed_image_pred );
+                cv2.waitKey(1);
+                
                 H = (H + H_pred)/2
             
             transformed_image = transform_image_to_base_image(transformed_image, H)
@@ -310,14 +322,15 @@ if __name__ == '__main__':
             
             if PREDICTION and (INPUT_MODE == 1 or INPUT_MODE == 0):
                 H_state_x_current = H
-                H_state_v_current = None
-                H_state_a_current = None
+                H_state_v_current = 0
+                H_state_a_current = 0
+                k = 0.5 # denoising
                 
                 if H_state_x_old is not None:
-                    H_state_v_current = H_state_x_current - H_state_x_old
+                    H_state_v_current = (H_state_x_current - H_state_x_old)*k + H_state_v_old*(1-k)
                 
                 if H_state_v_old is not None:
-                    H_state_a_current = H_state_v_current - H_state_v_old
+                    H_state_a_current = (H_state_v_current - H_state_v_old)*k + H_state_a_old*(1-k)
                     H_pred = H_state_x_current + H_state_v_current + H_state_a_current/2
                 
                 H_state_x_old = H_state_x_current
@@ -328,15 +341,19 @@ if __name__ == '__main__':
         divider_mask += transformed_mask
 
         if DEBUG >= 1:
-            cv2.imshow( "stabilized_average/256/divider_mask", stabilized_average/256/divider_mask );
-            cv2.imshow( "transformed_image/255", transformed_image/255 );
+            cv2.imshow( "stabilized_average/256/divider_mask", stabilized_average/divider_mask );
+            cv2.imshow( "transformed_image", transformed_image );
             cv2.imshow( "divider_mask", divider_mask/(counter+1) );
             cv2.waitKey(1);
 
         if DEBUG >= 3:
             cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
-            cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*65535/(counter+1)))
+            cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*255/(counter+1)))
         counter += 1
         
     #exit_handler()
+
+# main
+if __name__ == '__main__':
+    main()
 
