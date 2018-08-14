@@ -29,7 +29,7 @@ DARK_IN_DIR  = "./input_darkframe/"
 DARKFRAME_COEFF = 1.0
 OUT_DIR = "./output/"
 
-stabilized_average, divider_mask, divider_mask_sane, imagenames, outname = None, None, None, None, None
+stabilized_average, divider_mask_sane, imagenames, outname = None, None, None, None
 
 ## Returns 0.0 ... 65535.0 darkframe loaded from 16bpp image
 def get_darkframe():
@@ -78,7 +78,6 @@ def get_next_frame_from_video():
         fps = cap.get(cv2.CAP_PROP_FPS)
         
         while(True):
-            # Capture frame-by-frame
             ret, frame = cap.read()
             
             if ret == False:
@@ -364,8 +363,8 @@ def main():
         input_image_no_border = None
         input_image = None
 
-        if counter > (frames_num - 1): # frames_num:
-            return
+        #if counter > (frames_num - 1): # frames_num:
+        #    return
 
         try:
             shape_original = input_image_.shape
@@ -454,7 +453,7 @@ def main():
         divider_mask_sane[divider_mask_sane == 0] = 1
         
         if DEBUG >= 1:
-            cv2.imshow( "main(): stabilized_average/divider_mask", stabilized_average/divider_mask );
+            cv2.imshow( "main(): stabilized_average/divider_mask", stabilized_average/divider_mask_sane );
             cv2.imshow( "main(): transformed_mask", transformed_mask );
             cv2.imshow( "main(): transformed_image", transformed_image );
             cv2.imshow( "main(): divider_mask", divider_mask/(counter+1) );
@@ -462,7 +461,7 @@ def main():
 
         if DEBUG >= 3:
             cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
-            cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask*255/(counter+1)))
+            cv2.imwrite(OUT_DIR + imgname + '_divider_maskDEBUG.png', np.uint16(divider_mask_sane*255/(counter+1)))
         counter += 1
         
     #exit_handler()
