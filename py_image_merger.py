@@ -267,7 +267,7 @@ def make_mask_from_points(match_data, transformed_mask, _border_coeff = 0):
             kernel[ky, kx] = ma.pow(dist, int(8/relative_size_transformed_to_original) )
     kernel/np.max(kernel)
     mask *= transformed_mask
-    mask = cv2.blur(mask, (int(1/k_resize), int(1/k_resize)))
+    mask = cv2.blur(mask, (int(1/k_resize), int(1/k_resize))) # because without it details are missing after downscaling
     cv2.imshow( "make_mask_from_points(): mask", mask );
     cv2.imshow( "make_mask_from_points(): kernel", kernel );
     cv2.waitKey(1);
@@ -363,7 +363,9 @@ def main():
             if counter > 0:
                 return
             continue
-        
+
+        print("main(): image nr {}".format(counter + 1))
+
         if darkframe_image_no_border is None:
             darkframe_image_no_border = get_darkframe()
             darkframe_image_no_border = cv2.resize(darkframe_image_no_border, (shape_original[1], shape_original[0]), interpolation=cv2.INTER_LINEAR)
