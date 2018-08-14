@@ -196,7 +196,7 @@ def compute_homography(_input_image, _base, pxdistcoeff = 0.9, dscdistcoeff = 0.
         im2_x, im2_y = np.int32(kp2[img2_idx].pt)
         kp2_xyd.append(((im2_x, im2_y), match.distance,  kp1[input_image_idx].response, kp2[img2_idx].response))
     
-    print("compute_homography(): after filtration {} matches left\n".format(len(good)))
+    print("compute_homography(): after filtration {} matches left".format(len(good)))
 
     # getting source & destination points
     src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
@@ -364,7 +364,7 @@ def main():
                 return
             continue
 
-        print("main(): image nr {}".format(counter + 1))
+        print("\nmain(): image nr {}".format(counter + 1))
 
         if darkframe_image_no_border is None:
             darkframe_image_no_border = get_darkframe()
