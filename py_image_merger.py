@@ -55,7 +55,7 @@ def get_frame_from_main_camera():
         # Capture frame-by-frame
         ret, frame = cap.read()
 
-        yield np.float32(frame)/255, "webcam_{}".format(counter)
+        yield np.float32(frame)/255, "webcam_{}".format(counter), -1
         counter += 1
 
 
@@ -71,11 +71,20 @@ def get_next_frame_from_video():
     counter = 0
     for vidpath in videos_paths:
         cap = cv2.VideoCapture(mypath + vidpath)
+        
+        l   = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        
         while(True):
             # Capture frame-by-frame
             ret, frame = cap.read()
-
-            yield np.float32(frame)/255, "{}_{}".format(vidpath, counter)
+            
+            if ret == False:
+                break
+            
+            yield np.float32(frame)/255, "{}_{}".format(vidpath, counter), l
             counter += 1
 
 def get_next_frame_from_file():
@@ -87,7 +96,7 @@ def get_next_frame_from_file():
 
     counter = 0
     for imgpath in images_paths:
-        yield np.float32(cv2.imread( mypath + imgpath)), imgpath
+        yield np.float32(cv2.imread( mypath + imgpath)), imgpath, len(images_paths)
         counter += 1
 
 def get_next_frame_from_chosen_source(_src = 1):
@@ -116,7 +125,6 @@ def compute_homography(_input_image, _base, pxdistcoeff = 0.9, dscdistcoeff = 0.
     # find the keypoints and descriptors with orb
     kp1 = alg.detect(_input_image,None)
     kp1, des1 = alg.compute(_input_image, kp1)
-    
     
     kp2, des2 = None, None
     if _cache is not None:
@@ -352,9 +360,12 @@ def main():
 
     counter = 0
     imagenames = []
-    for input_image_, imgname in get_next_frame_from_chosen_source(INPUT_MODE):
+    for input_image_, imgname, frames_num in get_next_frame_from_chosen_source(INPUT_MODE):
         input_image_no_border = None
         input_image = None
+
+        if counter > (frames_num - 1): # frames_num:
+            return
 
         try:
             shape_original = input_image_.shape
@@ -364,7 +375,7 @@ def main():
                 return
             continue
 
-        print("\nmain(): image nr {}".format(counter + 1))
+        print("\nmain(): image nr {} of {}".format(counter + 1, frames_num))
 
         if darkframe_image_no_border is None:
             darkframe_image_no_border = get_darkframe()
