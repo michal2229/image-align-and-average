@@ -2,8 +2,6 @@
 
 import cv2
 import os
-import re
-from matplotlib import pyplot as plt
 import numpy as np
 import math as ma
 import atexit
@@ -18,7 +16,7 @@ INPUT_MODE = 1  # 0 - webcam, 1 - video, 2 - image sequence
 ALIGN = True  # if False, just average
 PREDICTION = False
 DEBUG = 1
-RESIZE = 1 #.0 0.5 gives half of every dim, and so on...
+RESIZE = 1  # .0 0.5 gives half of every dim, and so on...
 BORDER = 0.1
 KEYPOINTS_NEIGHBORHOOD_ONLY = True
 
@@ -30,7 +28,6 @@ OUT_DIR = "./output/"
 stabilized_average, divider_mask_sane, imagenames, outname = None, None, None, None
 
 
-## Returns 0.0 ... 65535.0 darkframe loaded from 16bpp image
 def get_darkframe():
     mypath = DARK_IN_DIR
 
@@ -109,7 +106,7 @@ def get_next_frame_from_chosen_source(_src=1):
         return get_next_frame_from_file()
 
 
-def compute_homography(_input_image, _base, pxdistcoeff=0.9, dscdistcoeff=0.9, _cache=None):
+def compute_homography(_input_image, _base, _pxdistcoeff=0.9, _dscdistcoeff=0.9, _cache=None):
     k_cnt = "counter"
     k_kp2 = "kp2"
     k_des2 = "des2"
@@ -192,10 +189,10 @@ def compute_homography(_input_image, _base, pxdistcoeff=0.9, dscdistcoeff=0.9, _
         dist_diffs.append(dist_diff)
 
     sorted_y_idx_list = sorted(range(len(dist_diffs)), key=lambda x: dist_diffs[x])
-    good = [matches[i] for i in sorted_y_idx_list][0:int(len(matches) * pxdistcoeff)]
+    good = [matches[i] for i in sorted_y_idx_list][0:int(len(matches) * _pxdistcoeff)]
 
     good = sorted(good, key=lambda x: x.distance)
-    good = good[0:int(len(good) * dscdistcoeff)]
+    good = good[0:int(len(good) * _dscdistcoeff)]
 
     kp2_xyd = []
     dist_diffs = []
@@ -212,26 +209,26 @@ def compute_homography(_input_image, _base, pxdistcoeff=0.9, dscdistcoeff=0.9, _
 
     if DEBUG >= 2:
         matchesimg = cv2.drawMatches(_input_image, kp1, _base, kp2, good, flags=4, outImg=None)
-        cv2.imshow("compute_homography(): matchesimg", matchesimg);
-        cv2.waitKey(1);
+        cv2.imshow("compute_homography(): matchesimg", matchesimg)
+        cv2.waitKey(1)
     # finding homography
     H, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
 
     return H, [kp2_xyd, maxresponse, maxdistance]
 
 
-def transform_image_to_base_image(_input_image, _H):
+def transform_image_to_base_image(_input_image, _h):
     h, w, b = _input_image.shape
-    dst = cv2.warpPerspective(_input_image, _H, (w, h))
+    dst = cv2.warpPerspective(_input_image, _h, (w, h))
 
     return dst
 
 
-def make_mask_for_image(_img, _border_coeff=0):
+def make_mask_for_image(_img, _border_coeff=0.0):
     return make_border_for_image(np.ones_like(_img), _border_coeff)
 
 
-def make_border_for_image(_img, _border_coeff=0):
+def make_border_for_image(_img, _border_coeff=0.0):
     h, w, b = _img.shape
     hborder = int(h * _border_coeff)
     wborder = int(w * _border_coeff)
@@ -239,10 +236,10 @@ def make_border_for_image(_img, _border_coeff=0):
     return map1
 
 
-def make_mask_from_points(match_data, transformed_mask, _border_coeff=0):
-    h, w, b = transformed_mask.shape
+def make_mask_from_points(_match_data, _transformed_mask, _border_coeff=0.0):
+    h, w, b = _transformed_mask.shape
     d = ma.sqrt(h ** 2 + w ** 2)
-    transmaskmean = np.mean(transformed_mask)  # percentage of area white
+    transmaskmean = np.mean(_transformed_mask)  # percentage of area white
     relative_size_transformed_to_original = ma.sqrt(transmaskmean) / (1 - 2 * _border_coeff)
     print("make_mask_from_points(): transmaskmean = {}".format(transmaskmean))
     print("make_mask_from_points(): relative_size_transformed_to_original = {}".format(
@@ -254,11 +251,11 @@ def make_mask_from_points(match_data, transformed_mask, _border_coeff=0):
     blurradius = blurradius - blurradius % 2 + 1
     # match_good_over_thresh = 5
 
-    mask = np.zeros_like(transformed_mask)
+    mask = np.zeros_like(_transformed_mask)
 
-    print("make_mask_from_points(): match_data = {}".format(match_data[1:]))
+    print("make_mask_from_points(): match_data = {}".format(_match_data[1:]))
 
-    kp2_xyd, maxresponse, maxdistance = match_data
+    kp2_xyd, maxresponse, maxdistance = _match_data
     for xykp2, dkp12, rkp2 in kp2_xyd:
         # k_ = max(k, match_good_over_thresh)
         kd = (1 - dkp12 / maxdistance) ** 5
@@ -278,16 +275,16 @@ def make_mask_from_points(match_data, transformed_mask, _border_coeff=0):
             dist = (kcenter - np.linalg.norm(np.array((kcenter - kx, kcenter - ky)))) / kcenter
             kernel[ky, kx] = ma.pow(dist, int(8 / relative_size_transformed_to_original))
     kernel / np.max(kernel)
-    mask *= transformed_mask
+    mask *= _transformed_mask
     mask = cv2.blur(mask,
                     (int(1 / k_resize), int(1 / k_resize)))  # because without it details are missing after downscaling
-    cv2.imshow("make_mask_from_points(): mask", mask);
-    cv2.imshow("make_mask_from_points(): kernel", kernel);
-    cv2.waitKey(1);
+    cv2.imshow("make_mask_from_points(): mask", mask)
+    cv2.imshow("make_mask_from_points(): kernel", kernel)
+    cv2.waitKey(1)
     mask = cv2.resize(mask, (0, 0), fx=k_resize, fy=k_resize, interpolation=cv2.INTER_LINEAR)
     # mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
-    cv2.imshow("make_mask_from_points(): mask after resize", mask);
-    cv2.waitKey(1);
+    cv2.imshow("make_mask_from_points(): mask after resize", mask)
+    cv2.waitKey(1)
     mask = cv2.filter2D(mask, cv2.CV_32F, kernel)
     # mask = cv2.GaussianBlur(mask, (blurradius, blurradius), 0)
     mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -299,19 +296,19 @@ def make_mask_from_points(match_data, transformed_mask, _border_coeff=0):
     return mask
 
 
-def compute_predicted_H(H_new, H_state_old):
-    H_state_current = [H_new, 0, 0]
-    H_pred = None
+def compute_predicted_H(_h_new, _h_state_old):
+    h_state_current = [_h_new, 0, 0]
+    h_pred = None
     k = 0.5  # denoising
 
-    if H_state_old[0] is not None:
-        H_state_current[1] = (H_state_current[0] - H_state_old[0]) * k + H_state_old[1] * (1 - k)
+    if _h_state_old[0] is not None:
+        h_state_current[1] = (h_state_current[0] - _h_state_old[0]) * k + _h_state_old[1] * (1 - k)
 
-    if H_state_old[1] is not None:
-        H_state_current[2] = (H_state_current[1] - H_state_old[1]) * k + H_state_old[1] * (1 - k)
-        H_pred = H_state_current[0] + H_state_current[1] + H_state_current[2] / 2
+    if _h_state_old[1] is not None:
+        h_state_current[2] = (h_state_current[1] - _h_state_old[1]) * k + _h_state_old[1] * (1 - k)
+        h_pred = h_state_current[0] + h_state_current[1] + h_state_current[2] / 2
 
-    return H_pred, H_state_current
+    return h_pred, h_state_current
 
 
 def exit_handler():
@@ -328,7 +325,7 @@ def exit_handler():
 
     cv2.imwrite(outname, np.uint16(stabilized_average * 65535))
 
-    cv2.waitKey();
+    cv2.waitKey()
 
 
 ## MAIN
@@ -345,21 +342,19 @@ def main():
 
     stabilized_average = None
     darkframe_image_no_border = None  # get_darkframe()
-    # darkframe_image = None
+
     mask_image_no_border = None
     mask_image = None
+
     divider_mask_no_border = None
     divider_mask = None
     divider_mask_sane = None
+
     transformed_image = None
     transformed_mask = None
 
-    H_state = [None, None, None]  # x, v, a
-    H_state_x_old = None
-    H_state_v_old = None
-    H_state_a_old = None
-
-    H_pred = None
+    homography_state = [None, None, None]  # x, v, a
+    homography_pred = None
 
     keypoint_cache = dict()
 
@@ -368,9 +363,6 @@ def main():
     for input_image_, imgname, frames_num in get_next_frame_from_chosen_source(INPUT_MODE):
         input_image_no_border = None
         input_image = None
-
-        # if counter > (frames_num - 1): # frames_num:
-        #    return
 
         try:
             shape_original = input_image_.shape
@@ -425,48 +417,48 @@ def main():
         input_image = cv2.resize(input_image, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
         transformed_image = input_image
         transformed_mask = mask_image
-        H = None
+        homography = None
 
         if ALIGN:
             base = (stabilized_average / divider_mask_sane)
             base[base <= 0] = 0
             base[base >= 1] = 1
-            H, match_data = compute_homography(input_image, np.array(base, dtype=input_image.dtype), pxdistcoeff=0.9,
-                                               dscdistcoeff=0.9, _cache=keypoint_cache)
+            homography, match_data = compute_homography(input_image, np.array(base, dtype=input_image.dtype), _pxdistcoeff=0.9,
+                                                        _dscdistcoeff=0.9, _cache=keypoint_cache)
 
-            if H_pred is not None:
-                transformed_image_nopred = transform_image_to_base_image(transformed_image, H)
-                transformed_image_pred = transform_image_to_base_image(transformed_image, H_pred)
-                cv2.imshow("main(): transformed_image_nopred", transformed_image_nopred);
-                cv2.imshow("main(): transformed_image_pred", transformed_image_pred);
-                cv2.waitKey(1);
+            if homography_pred is not None:
+                transformed_image_nopred = transform_image_to_base_image(transformed_image, homography)
+                transformed_image_pred = transform_image_to_base_image(transformed_image, homography_pred)
+                cv2.imshow("main(): transformed_image_nopred", transformed_image_nopred)
+                cv2.imshow("main(): transformed_image_pred", transformed_image_pred)
+                cv2.waitKey(1)
 
-                H = (H + H_pred) / 2
+                homography = (homography + homography_pred) / 2
 
-            transformed_image = transform_image_to_base_image(transformed_image, H)
-            transformed_mask = transform_image_to_base_image(transformed_mask, H)
+            transformed_image = transform_image_to_base_image(transformed_image, homography)
+            transformed_mask = transform_image_to_base_image(transformed_mask, homography)
 
             if PREDICTION and (INPUT_MODE == 1 or INPUT_MODE == 0):
-                H_pred, H_state = compute_predicted_H(H, H_state)
+                homography_pred, homography_state = compute_predicted_H(homography, homography_state)
 
             if KEYPOINTS_NEIGHBORHOOD_ONLY:
                 mask_of_kp2 = make_mask_from_points(match_data, transformed_mask, BORDER)
                 transformed_mask *= mask_of_kp2
                 transformed_image *= mask_of_kp2
                 if DEBUG >= 1:
-                    cv2.imshow("main(): maks_of_kp2", mask_of_kp2);
-                    cv2.waitKey(1);
+                    cv2.imshow("main(): maks_of_kp2", mask_of_kp2)
+                    cv2.waitKey(1)
         stabilized_average += np.float32(transformed_image)
         divider_mask += transformed_mask
         divider_mask_sane = divider_mask.copy()
         divider_mask_sane[divider_mask_sane == 0] = 1
 
         if DEBUG >= 1:
-            cv2.imshow("main(): stabilized_average/divider_mask", stabilized_average / divider_mask_sane);
-            cv2.imshow("main(): transformed_mask", transformed_mask);
-            cv2.imshow("main(): transformed_image", transformed_image);
-            cv2.imshow("main(): divider_mask", divider_mask / (counter + 1));
-            cv2.waitKey(1);
+            cv2.imshow("main(): stabilized_average/divider_mask", stabilized_average / divider_mask_sane)
+            cv2.imshow("main(): transformed_mask", transformed_mask)
+            cv2.imshow("main(): transformed_image", transformed_image)
+            cv2.imshow("main(): divider_mask", divider_mask / (counter + 1))
+            cv2.waitKey(1)
 
         if DEBUG >= 3:
             cv2.imwrite(OUT_DIR + imgname + '_DEBUG.jpg', transformed_image)
